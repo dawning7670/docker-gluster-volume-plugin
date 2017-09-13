@@ -11,7 +11,7 @@ go build
 
 ### Usage
 
-Start volume plugin, `server` is your gluster node name(only use one node name)
+Start volume plugin, `server` is your gluster node name(only use one node)
 
 ```sh
 docker-gluster-volume-plugin -server server51
@@ -31,5 +31,6 @@ docker run --name test -v d-gv5:/data -td ubuntu:14.04.3
 
 ## Reference
 
-[]: https://github.com/sapk/docker-volume-gluster
-[]: https://github.com/calavera/docker-volume-glusterfs
+https://github.com/sapk/docker-volume-gluster
+
+https://github.com/calavera/docker-volume-glusterfs
