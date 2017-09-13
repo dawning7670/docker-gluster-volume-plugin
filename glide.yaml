@@ -1,0 +1,10 @@
+package: .
+import:
+- package: github.com/docker/go-plugins-helpers
+  subpackages:
+  - volume
+  version: a9ef19c479cb60e751efa55f7f2b265776af1abf
+- package: github.com/coreos/etcd
+  subpackages:
+  - client
+  version: 3.2.7
