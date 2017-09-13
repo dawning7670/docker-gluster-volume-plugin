@@ -1,6 +1,6 @@
 # docker-gluster-volume-plugin
 
-Docker volume plugin for glusterfs
+docker volume plugin for glusterfs
 
 ### Build
 
@@ -11,10 +11,13 @@ go build
 
 ### Usage
 
-Start volume plugin, `server` is your gluster node name(only use one node)
+Start volume plugin
+
+- `server` :  gluster node name(only use one node)
+- `etcd` : etcd server address. when plugin running in multi-host environment, it must required, because plugin use etcd to sync docker volume config between hosts
 
 ```sh
-docker-gluster-volume-plugin -server server51
+docker-gluster-volume-plugin -server server51 -etcd http://<ip>:<port>
 ```
 
 Create volume, the `vname`is your gluster volume name
