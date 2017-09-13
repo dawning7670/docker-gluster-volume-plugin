@@ -12,12 +12,16 @@ import (
 )
 
 const (
-	persistenceFilePath = "/etc/docker-gluster-volume-plugin-persistence.json"
-	pluginID            = "glusterfs"
+	PersistenceFilePath = "/etc/docker-gluster-volume-plugin-persistence.json"
+	PluginID            = "glusterfs"
+	EtcdEventUrl        = "/docker/gluster/volume/plugin/event"
+	OptGlusterVolumeName = "vname"
+	EventActionCreate = "create"
+	EventActionRemove = "remove"
 )
 
 var (
-	defaultDir  = filepath.Join(volume.DefaultDockerRootDirectory, pluginID)
+	defaultDir  = filepath.Join(volume.DefaultDockerRootDirectory, PluginID)
 	server      = flag.String("server", "", "one server name from servers")
 	baseDir     = flag.String("basedir", defaultDir, "GlusterFS volumes root directory")
 	etcdServers = flag.String("etcd", "", "etcd server address, more than one servers separator with comma")
@@ -41,5 +45,5 @@ func main() {
 	h := volume.NewHandler(d)
 	u, _ := user.Lookup("root")
 	gid, _ := strconv.Atoi(u.Gid)
-	h.ServeUnix(pluginID, gid)
+	h.ServeUnix(PluginID, gid)
 }

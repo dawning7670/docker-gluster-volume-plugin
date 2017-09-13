@@ -12,12 +12,13 @@ import (
 	"path/filepath"
 	"fmt"
 	"os/exec"
+	"context"
 )
 
 type EtcdEvent struct {
-	Action            string
-	GlusterVolumeName string
-	MountName         string
+	Action            string `json:"action"`
+	GlusterVolumeName string `json:"gluster_volume_name"`
+	MountName         string `json:"mount_name"`
 }
 type GlusterVolume struct {
 	Name        string `json:"name"`
@@ -45,13 +46,14 @@ func Init(server string, baseDir string, etcdUrls []string) GlusterDriver {
 		log.Fatal(err)
 	}
 	d.EtcdAPI = etcdApi
-	if exists, _ := PathExists(persistenceFilePath); exists {
-		log.Printf("found persist file %s, retrieve config", persistenceFilePath)
+	if exists, _ := PathExists(PersistenceFilePath); exists {
+		log.Printf("found persist file %s, retrieve config", PersistenceFilePath)
 		volumes, _ := ReadPersistFile()
 		d.Volumes = volumes
 	} else {
-		log.Printf("not found persist file %s, it will be created empty", persistenceFilePath)
+		log.Printf("not found persist file %s, it will be created empty", PersistenceFilePath)
 	}
+	go d.EventWatcher()
 	return d
 }
 
@@ -59,11 +61,11 @@ func (d GlusterDriver) Create(r *volume.CreateRequest) error {
 	d.Lock()
 	defer d.Unlock()
 	log.Printf("Entering Create")
-	if _, ok := r.Options["vname"]; !ok {
+	if _, ok := r.Options[OptGlusterVolumeName]; !ok {
 		return fmt.Errorf("vname option required")
 	}
-	name, _ := r.Options["vname"]
-	log.Printf("create volume %s, vname %s", r.Name, name)
+	name, _ := r.Options[OptGlusterVolumeName]
+	log.Printf("create volume %s, %s, %s", r.Name, OptGlusterVolumeName, name)
 	d.Volumes[r.Name] = &GlusterVolume{
 		Name:        name,
 		MountName:   r.Name,
@@ -72,15 +74,14 @@ func (d GlusterDriver) Create(r *volume.CreateRequest) error {
 	}
 
 	if exists, _ := PathExists(d.MountPoint(r.Name)); !exists {
-		err := os.Mkdir(d.MountPoint(r.Name), 0700)
+		err := os.MkdirAll(d.MountPoint(r.Name), 0700)
 		if err != nil {
 			return err
 		}
 	}
-
+	rspn, err := d.NotifyServers(EtcdEvent{Action: EventActionCreate, GlusterVolumeName: name, MountName: r.Name})
+	log.Printf("notify create event. rspn: %s, err: %s", rspn, err)
 	WritePersistFile(d.Volumes)
-
-	// todo Nodify Etcd Volume Create Event
 	return nil
 }
 func (d GlusterDriver) List() (*volume.ListResponse, error) {
@@ -106,13 +107,14 @@ func (d GlusterDriver) Remove(r *volume.RemoveRequest) error {
 	d.Lock()
 	defer d.Unlock()
 	log.Printf("Entering Remove %s", r.Name)
-	if _, ok := d.Volumes[r.Name]; ok {
-		delete(d.Volumes, r.Name)
-		WritePersistFile(d.Volumes)
-		return nil
+	if _, ok := d.Volumes[r.Name]; !ok {
+		return fmt.Errorf("not found volume %s", r.Name)
 	}
-	// todo nodify etcd delete event
-	return fmt.Errorf("not found volume %s", r.Name)
+	delete(d.Volumes, r.Name)
+	rspn, err := d.NotifyServers(EtcdEvent{Action: EventActionRemove, MountName: r.Name})
+	log.Printf("notify create event. rspn: %s, err: %s", rspn, err)
+	WritePersistFile(d.Volumes)
+	return nil
 }
 
 func (d GlusterDriver) Path(r *volume.PathRequest) (*volume.PathResponse, error) {
@@ -182,14 +184,14 @@ func (d GlusterDriver) MountPoint(name string) string {
 
 func ReadPersistFile() (map[string]*GlusterVolume, error) {
 	var volumes map[string]*GlusterVolume
-	jsonStr, err := ioutil.ReadFile(persistenceFilePath)
+	jsonStr, err := ioutil.ReadFile(PersistenceFilePath)
 	json.Unmarshal(jsonStr, &volumes)
 	return volumes, err
 }
 
 func WritePersistFile(volumes map[string]*GlusterVolume) error {
 	bytes, err := json.Marshal(volumes)
-	err = ioutil.WriteFile(persistenceFilePath, bytes, os.ModePerm)
+	err = ioutil.WriteFile(PersistenceFilePath, bytes, os.ModePerm)
 	return err
 }
 
@@ -218,4 +220,47 @@ func CreateEtcdApi(etcdUrls []string) (client.KeysAPI, error) {
 
 func ExecuteCommand(cmd string) error {
 	return exec.Command("sh", "-c", cmd).Run()
+}
+
+func (d GlusterDriver) EventWatcher() {
+	watcher := d.EtcdAPI.Watcher(EtcdEventUrl, &client.WatcherOptions{Recursive: true})
+	for {
+		res, err := watcher.Next(context.Background())
+		if err != nil {
+			log.Println("Error watch workers:", err)
+			break
+		}
+		if res.Action == "set" {
+			d.Lock()
+			var event EtcdEvent
+			json.Unmarshal([]byte(res.Node.Value), &event)
+			if event.Action == EventActionCreate {
+				log.Printf("received create action")
+				cmd := fmt.Sprintf("docker volume create --driver %s --opt vname=%s --name %s",
+					PluginID, event.GlusterVolumeName, event.MountName)
+				log.Printf("execute %s", cmd)
+				ExecuteCommand(cmd)
+				d.Volumes[event.MountName] = &GlusterVolume{
+					Name:        event.GlusterVolumeName,
+					MountName:   event.MountName,
+					Connections: 0,
+					MountPoint:  d.MountPoint(event.MountName),
+				}
+				WritePersistFile(d.Volumes)
+			} else if event.Action == EventActionRemove {
+				log.Printf("received delete action")
+				cmd := fmt.Sprintf("docker volume rm %s", event.MountName)
+				log.Printf("execute %s", cmd)
+				ExecuteCommand(cmd)
+				delete(d.Volumes, event.MountName)
+				WritePersistFile(d.Volumes)
+			}
+			d.Unlock()
+		}
+	}
+}
+
+func (d GlusterDriver) NotifyServers(event EtcdEvent) (*client.Response, error) {
+	eventBytes, _ := json.Marshal(event)
+	return d.EtcdAPI.Set(context.Background(), EtcdEventUrl, string(eventBytes), nil)
 }
