@@ -14,7 +14,7 @@ go build
 Start volume plugin
 
 - `server` :  gluster node name(only use one node)
-- `etcd` : etcd server address. when plugin running in multi-host environment, it must required, because plugin use etcd to sync docker volume config between hosts
+- `etcd` : etcd server address. when plugin running in multi-host environment, it must required, because plugin use etcd to sync docker            volume config between hosts
 
 ```sh
 docker-gluster-volume-plugin -server server51 -etcd http://<ip>:<port>
