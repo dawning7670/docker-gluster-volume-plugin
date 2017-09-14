@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os/exec"
 	"context"
+	"strings"
 )
 
 type EtcdEvent struct {
@@ -29,15 +30,15 @@ type GlusterVolume struct {
 
 type GlusterDriver struct {
 	sync.Mutex
-	Server  string
+	Servers []string
 	BaseDir string
 	Volumes map[string]*GlusterVolume
 	EtcdAPI client.KeysAPI
 }
 
-func Init(server string, baseDir string, etcdUrls []string) GlusterDriver {
+func Init(servers []string, baseDir string, etcdUrls []string) GlusterDriver {
 	d := GlusterDriver{
-		Server:  server,
+		Servers: servers,
 		BaseDir: baseDir,
 		Volumes: make(map[string]*GlusterVolume),
 	}
@@ -79,7 +80,7 @@ func (d GlusterDriver) Create(r *volume.CreateRequest) error {
 			return err
 		}
 	}
-	rspn, err := d.NotifyServers(EtcdEvent{Action: EventActionCreate, GlusterVolumeName: name, MountName: r.Name})
+	rspn, err := d.NotifyServers(EtcdEvent{Action: EventCreate, GlusterVolumeName: name, MountName: r.Name})
 	log.Printf("notify create event. rspn: %s, err: %s", rspn, err)
 	WritePersistFile(d.Volumes)
 	return nil
@@ -111,7 +112,7 @@ func (d GlusterDriver) Remove(r *volume.RemoveRequest) error {
 		return fmt.Errorf("not found volume %s", r.Name)
 	}
 	delete(d.Volumes, r.Name)
-	rspn, err := d.NotifyServers(EtcdEvent{Action: EventActionRemove, MountName: r.Name})
+	rspn, err := d.NotifyServers(EtcdEvent{Action: EventRemove, MountName: r.Name})
 	log.Printf("notify create event. rspn: %s, err: %s", rspn, err)
 	WritePersistFile(d.Volumes)
 	return nil
@@ -133,8 +134,12 @@ func (d GlusterDriver) Mount(r *volume.MountRequest) (*volume.MountResponse, err
 		return &volume.MountResponse{}, fmt.Errorf("not found volume %s", r.Name)
 	}
 	if v.Connections == 0 {
-		uri := fmt.Sprintf("%s:%s", d.Server, v.Name)
-		cmd := fmt.Sprintf("/usr/bin/mount -t glusterfs %s %s", uri, v.MountPoint)
+		var serverNodes []string
+		for _, server := range d.Servers {
+			serverNodes = append(serverNodes, fmt.Sprintf("-s %s", server))
+		}
+
+		cmd := fmt.Sprintf("glusterfs --volfile-id=%s %s %s", v.Name, strings.Join(serverNodes[:], " "), v.MountPoint)
 		err := ExecuteCommand(cmd)
 		log.Printf("execute %s", cmd)
 		if err != nil {
@@ -234,7 +239,7 @@ func (d GlusterDriver) EventWatcher() {
 			d.Lock()
 			var event EtcdEvent
 			json.Unmarshal([]byte(res.Node.Value), &event)
-			if event.Action == EventActionCreate {
+			if event.Action == EventCreate {
 				log.Printf("received create action")
 				cmd := fmt.Sprintf("docker volume create --driver %s --opt vname=%s --name %s",
 					PluginID, event.GlusterVolumeName, event.MountName)
@@ -247,7 +252,7 @@ func (d GlusterDriver) EventWatcher() {
 					MountPoint:  d.MountPoint(event.MountName),
 				}
 				WritePersistFile(d.Volumes)
-			} else if event.Action == EventActionRemove {
+			} else if event.Action == EventRemove {
 				log.Printf("received delete action")
 				cmd := fmt.Sprintf("docker volume rm %s", event.MountName)
 				log.Printf("execute %s", cmd)
@@ -264,3 +269,5 @@ func (d GlusterDriver) NotifyServers(event EtcdEvent) (*client.Response, error) 
 	eventBytes, _ := json.Marshal(event)
 	return d.EtcdAPI.Set(context.Background(), EtcdEventUrl, string(eventBytes), nil)
 }
+
+func (d GlusterDriver)
