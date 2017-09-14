@@ -269,5 +269,3 @@ func (d GlusterDriver) NotifyServers(event EtcdEvent) (*client.Response, error) 
 	eventBytes, _ := json.Marshal(event)
 	return d.EtcdAPI.Set(context.Background(), EtcdEventUrl, string(eventBytes), nil)
 }
-
-func (d GlusterDriver)
