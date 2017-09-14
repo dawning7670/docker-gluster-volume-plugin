@@ -13,7 +13,7 @@ go build
 
 Start volume plugin
 
-- `servers` :  glusterfs nodes. 
+- `server` :  glusterfs nodes. 
 - `etcd` : etcd server address. when plugin running in multi-host environment, it must required, because plugin use etcd to sync docker volume config between hosts
 
 ```sh
