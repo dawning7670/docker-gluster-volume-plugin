@@ -1,6 +1,6 @@
 # docker-gluster-volume-plugin
 
-docker volume plugin for glusterfs
+Docker volume plugin for glusterfs
 
 ## Build
 
