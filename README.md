@@ -2,25 +2,25 @@
 
 docker volume plugin for glusterfs
 
-### Build
+## Build
 
 ```sh
 glide install
 go build
 ```
 
-### Usage
+## Usage
 
-#### Start volume plugin
+### Start volume plugin
 
 - `server` :  glusterfs nodes. 
-- `etcd` : etcd server address. when plugin running in multi-host environment, it must required, because plugin use etcd to sync docker volume config between hosts, include all of `docker volume` commands.
+- `etcd` : etcd server address. when plugin running in multi-host environment, it is required. Because plugin use etcd to sync docker volume config between hosts, include all of `docker volume` commands.
 
 ```sh
 docker-gluster-volume-plugin -server server1:server2:server3 -etcd http://<ip>:<port>[,http://<ip>:<port>...]
 ```
 
-#### Create volume
+### Create volume
 
 - `vname`: gluster volume name
 
@@ -28,13 +28,13 @@ docker-gluster-volume-plugin -server server1:server2:server3 -etcd http://<ip>:<
 docker volume create --driver glusterfs --opt vname="gv5" --name d-gv5
 ```
 
-#### Run container
+### Run container
 
 ```sh
 docker run --name test -v d-gv5:/data -td ubuntu:14.04.3
 ```
 
-## Reference
+# Reference
 
 https://github.com/sapk/docker-volume-gluster
 
